@@ -24,9 +24,9 @@ nigeria-political-violence/
 │   ├── schemas.py
 │   ├── Dockerfile
 │   └── .dockerignore
+│   └── tests
+│        └── tests_api.py
 │
-├── tests/
-│   └── test_api.py
 │
 ├── requirements.txt
 └── README.md
@@ -64,6 +64,56 @@ nigeria-political-violence/
 - Given the importance of transparency and analyst oversight in humanitarian early warning, the marginal gains from the more complex models were not considered sufficient to justify their added complexity.
 
 
+# Requirements
+Python 3.13 (matches the Docker image)
+scikit-learn 1.9.1. The pickled model must be loaded with the same scikit-learn version it was trained with, otherwise predictions fail (for example with 'LogisticRegression' object has no attribute 'multi_class').
+
+All dependencies are pinned in `conflict-prediction-api/requirements.txt`.
+ 
+## Running the API Locally
+ 
+```bash
+cd conflict-prediction-api
+python3.13 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+uvicorn main:app --reload
+```
+ 
+Open <http://127.0.0.1:8000/docs> for the interactive API page.
+ 
+### Example request
+ 
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"admin1": "Abia"}'
+```
+ 
+### Example response
+ 
+```json
+{
+  "admin1": "Abia",
+  "observation_week": "2026-10-26",
+  "probability": 0.3124,
+  "predicted_conflict": 1,
+  "threshold": 0.275
+}
+```
+ 
+The values above are illustrative. `predicted_conflict` is 1 when `probability` is at or above `threshold`.
+### Endpoints
+ 
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | Health check |
+| POST | `/predict` | Predict conflict for a state using its latest observation. Body: `{"admin1": "<state>"}` |
+ 
+Error responses: `404` if the state isn't in the data, `422` for invalid input or missing lagged feature values.
+
+
+
 ## Getting Started
  
 ```bash
@@ -92,6 +142,89 @@ To run the tests:
 ```bash
 pytest tests/
 ```
+
+## On Azure Deployment
+- The API is also deplohed as a container on Azure Container Apps, builds the docker image from the Dockerfile in the cloud. 
+- Live API: https://conflict-api.ashypebble-e398be07.uksouth.azurecontainerapps.io/docs#/default/predict_predict_post
+
+ 
+### Prerequisites
+ 
+- An Azure account with an active subscription (a personal Microsoft account without a subscription can't use Azure Cloud Shell)
+- The [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), or [Azure Cloud Shell](https://portal.azure.com) in the browser (upload the `conflict-prediction-api/` folder, including the `.pkl` and `.csv` files, and exclude `venv/`)
+
+## Deploy
+ 
+Run these from inside `conflict-prediction-api/`:
+ 
+```bash
+# One-time setup
+az login
+az extension add --name containerapp --upgrade
+az provider register --namespace Microsoft.App
+az provider register --namespace Microsoft.OperationalInsights
+az group create --name conflict-api-rg --location uksouth
+ 
+# Build in Azure and deploy
+az containerapp up \
+  --name conflict-api \
+  --resource-group conflict-api-rg \
+  --location uksouth \
+  --environment conflict-env \
+  --source . \
+  --ingress external \
+  --target-port 8000
+```
+ 
+Get the public address:
+ 
+```bash
+az containerapp show --name conflict-api --resource-group conflict-api-rg \
+  --query properties.configuration.ingress.fqdn -o tsv
+```
+ 
+Test it:
+ 
+```bash
+curl -X POST https://<app-address>/predict \
+  -H "Content-Type: application/json" \
+  -d '{"admin1": "Abia"}'
+```
+ 
+### Redeploying
+ 
+After changing the code, model or data, re-run the `az containerapp up` command above.
+ 
+### Viewing logs
+ 
+```bash
+az containerapp logs show --name conflict-api --resource-group conflict-api-rg --follow
+```
+ 
+### Cleaning up
+ 
+Delete everything created for the deployment to stop charges:
+ 
+```bash
+az group delete --name conflict-api-rg
+```
+ 
+### Notes
+ 
+- The model and `cleaned_data.csv` are baked into the image, so new data requires a rebuild and redeploy.
+- The endpoint is public and has no authentication. Add an API key or restrict access before using it beyond a demo.
+- Resources are billed by usage. Check current Azure pricing and consider setting a budget alert.
+## Running the Tests
+ 
+From inside `conflict-prediction-api/`, with the virtual environment active:
+ 
+```bash
+python -m pip install pytest httpx
+python -m pytest tests/ -v
+```
+ 
+Use `python -m pytest` (not bare `pytest`) so the virtual environment's packages are used. The tests use the real model and dataset, so both files must be present next to `main.py`.
+
  
 ## Data
  
