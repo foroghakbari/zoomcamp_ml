@@ -1,6 +1,6 @@
 # Predicting conflict severity in Nigeria
 ---
-This notebook goes through a pipline predicting severity of political violence at subnational level in Nigeria using historical features in ACLED. The selected model is deployed as a containarised API. 
+This notebook goes through a pipline predicting severity of political violence at subnational level in Nigeria using historical features in ACLED. The selected model is deployed as a containarised API. An aribtary threshold of 5 fatalities was coded 'high severity conflict' for a given week. 
 
 
 ## Project Structure
@@ -24,11 +24,13 @@ nigeria-political-violence/
 │   ├── schemas.py
 │   ├── Dockerfile
 │   └── .dockerignore
+|   └── requirements.txt
 │   └── tests
 │        └── tests_api.py
 │
 │
-├── requirements.txt
+├── conflict-prediction-api.zip
+| 
 └── README.md
 ```
 
@@ -38,6 +40,19 @@ nigeria-political-violence/
 2. **Modelling and deployment** (`02_modelling_deployment.ipynb`): trains and compares Logistic Regression, Random Forest and XGBoost, selects a decision threshold for each, and exports the chosen model to `models/`.
 3. **API** (`conflict-prediction-api/`): serves the selected model for predictions, with request/response schemas in `schemas.py` and a Docker setup for deployment.
 4. **Tests** (`tests/test_api.py`): tests for the API.
+
+
+##  Feature selection:
+
+| Features | Rationale for feature selection | Any issues |
+|---|---|---|
+| `fatalities_lag_w4_log` | Captures the short-term relationship between previous weeks' fatalities and the current outcome, accounting for recent conflict intensity. | Potential skewness in fatality counts; log transformation helps reduce the influence of extreme values. |
+| `fatalities_lag_w12_log` | Captures medium-term conflict intensity by accounting for fatalities over the preceding 12 weeks. | Potential overlap and multicollinearity with the 4-week lag variable. With a r = 0.91|
+| `population_exposure_lag_w4` | lagged so only past information is used | Highly correlated with fatalities|
+| `admin1` (fixed effects) | Controls for time-invariant differences across first-level administrative regions, accounting for unobserved geographical and regional characteristics, we know from EDA that Borno accounts for majority of the conflict fatalities | Increases model complexity; does not account for time-varying regional characteristics. |
+| `is_election_year` | Excluded due to lack of relationship in EDA, negative relationship with conflict/fatalities events|
+
+- Note: Other features from other data sets such as demographic data from WorldPop and national census data to get population levels at admin 1 level should also be added, due to lack of time, these features already existing in ACLED data was used. 
 
 
 ## Model Comparison
@@ -54,6 +69,8 @@ nigeria-political-violence/
 | Test Recall | 0.660 | 0.712 | 0.723 |
 | Test F1-score | 0.702 | 0.712 | 0.706 |
 | Selected threshold | 0.275 | 0.28 | 0.25 |
+
+
  
 ## Final Model Selection
  
@@ -61,7 +78,7 @@ nigeria-political-violence/
  
 - Although XGBoost and Random Forest achieved slightly higher test ROC-AUC and Average Precision, all three models performed broadly comparably.
 - Logistic Regression offers a strong balance of predictive performance, interpretability and operational simplicity. It also achieved the highest test precision (0.749), reducing the proportion of false-positive alerts relative to the two tree-based models at their selected thresholds.
-- Given the importance of transparency and analyst oversight in humanitarian early warning, the marginal gains from the more complex models were not considered sufficient to justify their added complexity.
+- Given the importance of transparency and analyst oversight in humanitarian early warning, the marginal gains from the more complex models were not considered sufficient. 
 
 
 # Requirements
